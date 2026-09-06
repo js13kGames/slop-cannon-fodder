@@ -8,8 +8,8 @@ no web fonts, no frameworks, **no network requests at all**. The deployable is o
 fits comfortably inside a 13 KB gzipped budget.
 
 ```
-dist/slop-cannon-fodder.min.html   24,929 bytes raw   ->   10,113 bytes gzipped
-budget 13 * 1024 = 13,312 bytes    ->   3,199 bytes remaining (76% used)
+dist/slop-cannon-fodder.min.html   25,131 bytes raw   ->   10,217 bytes gzipped
+budget 13 * 1024 = 13,312 bytes    ->   3,095 bytes remaining (77% used)
 ```
 
 Exact, freshly generated numbers always live in [`dist/size-report.txt`](dist/size-report.txt).
@@ -64,9 +64,13 @@ player's **local** timezone as `YYYYMMDD` — that is the daily challenge. Type 
 custom run. The active seed is always visible in the bottom-right of the HUD and on the defeat
 screen, so a good run can be shared and replayed exactly.
 
-The seed drives an FNV-1a hash into a `mulberry32` PRNG, which lays out the legacy-code blocks,
-paints the terrain, and seeds wave composition. Seeds are case-insensitive and stripped to
-`A-Z0-9`, so `slop` and `SLOP` are the same arena.
+The seed drives an FNV-1a hash into three independent `mulberry32` streams: one lays out the
+legacy-code blocks, one paints the terrain, and one — reset by `initWorld` on every start and
+restart — drives everything that can change the outcome of a run (wave composition, spawn points,
+enemy steering bias, weapon spread, drops and their timing). `Math.random` is reserved for purely
+cosmetic work such as particles, goo splats and screen shake, so the same seed always plays out
+the same way. Seeds are case-insensitive and stripped to `A-Z0-9`, so `slop` and `SLOP` are the
+same arena.
 
 Terrain generation guarantees a playable arena: the spawn pad at the centre is always cleared, and
 after the blocks are placed a flood fill from the spawn seals any pocket it cannot reach. That
@@ -119,9 +123,17 @@ gaps removed) that preserves the spaces between words in prose.
 * the build output parses, is self-contained, matches the reported gzip size, and is under budget
 * the shipped HTML still contains the required strings (`PRODUCTION IS DOWN`, HUD labels,
   `contextmenu`, `AudioContext`, `pixelated`, …)
+* a full run of the real simulation replays identically for one seed even when `Math.random`
+  returns a different constant, restarting a seed reproduces both the terrain and the run, and a
+  different seed diverges
+* no enemy — including the radius-10 Monolith — ever spawns overlapping a block or the border,
+  and a body's box test catches every cell it overlaps, not just its corners
+* a bullet moving 16.5 px in one frame cannot tunnel through a 15 px wall or skip a small enemy,
+  the nearest enemy on the path is hit first, and reach, lifetime and kill scoring are unchanged
 
-The determinism tests lift the terrain code straight out of `src/index.html` between `/*<gen>*/`
-markers and run it in Node, so nothing test-only is added to the deployed file.
+The terrain tests lift the generator straight out of `src/index.html` between `/*<gen>*/` markers;
+the gameplay tests run the real `<script>` block against a stub DOM/canvas. Nothing test-only is
+added to the deployed file.
 
 Beyond the automated checks, the build was exercised in a real browser: title → DEPLOY → movement
 on WASD and arrows, held-fire cadence, grenades on both `Space` and right mouse, pause/resume,
@@ -133,7 +145,8 @@ defeat, `RETRY SAME SEED` and `NEW SEED` restarts with no page reload, zero cons
 ```
 src/index.html                    readable source, the thing you edit
 build.js                          dependency-free minifier + size report
-test/build.test.js                node --test checks
+test/build.test.js                node --test checks for terrain, minifier and budget
+test/game.test.js                 node --test checks for the simulation itself
 dist/slop-cannon-fodder.min.html  the deployable
 dist/size-report.txt              generated, exact byte counts
 ```

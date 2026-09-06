@@ -270,7 +270,10 @@ function buildGrid(rnd, gw, gh) {
 
 /* ---------- math helpers ---------- */
 function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+/* rand() is cosmetic only (particles, screen shake); anything that can change
+   the outcome of a run must go through grand(), the seeded gameplay stream. */
 function rand(a, b) { return a + Math.random() * (b - a); }
+function grand(a, b) { return a + gameRng() * (b - a); }
 function len(x, y) { return Math.sqrt(x * x + y * y); }
 
 /* ---------- display scaling (integer when it fits) ---------- */
@@ -430,10 +433,15 @@ function solidCell(cx, cy) {
 }
 function solidAt(x, y) { return solidCell(x / CS | 0, y / CS | 0); }
 
-/* box test used by every moving body */
+/* Box test used by every moving body. Every cell the box overlaps is
+   checked, so nothing (a lone pillar, a big monolith) slips between corners. */
 function blocked(x, y, r) {
-  return solidAt(x - r, y - r) || solidAt(x + r, y - r) ||
-         solidAt(x - r, y + r) || solidAt(x + r, y + r);
+  const x0 = Math.floor((x - r) / CS), x1 = Math.floor((x + r) / CS);
+  const y1 = Math.floor((y + r) / CS);
+  for (let cy = Math.floor((y - r) / CS); cy <= y1; cy++) {
+    for (let cx = x0; cx <= x1; cx++) if (solidCell(cx, cy)) return true;
+  }
+  return false;
 }
 
 /* axis-separated movement so bodies slide along walls */
@@ -442,15 +450,17 @@ function moveBody(b, dx, dy) {
   if (!blocked(b.x, b.y + dy, b.r)) b.y += dy; else b.y = clamp(b.y, b.r, H - b.r);
 }
 
-/* a random open spot, optionally far away from the player */
-function openSpot(minDist) {
+/* a random open spot with room for radius r, optionally far from the player */
+function openSpot(minDist, r) {
+  r = r || 7;
   for (let i = 0; i < 400; i++) {
     const cx = 1 + Math.floor(gameRng() * (GW - 2));
     const cy = 1 + Math.floor(gameRng() * (GH - 2));
     if (solidCell(cx, cy)) continue;
     const x = cx * CS + CS / 2, y = cy * CS + CS / 2;
-    if (blocked(x, y, 7)) continue;
-    if (minDist && player && len(x - player.x, y - player.y) < minDist) continue;
+    if (blocked(x, y, r)) continue;
+    /* wide bodies may have nowhere far to stand, so the distance rule relaxes last */
+    if (minDist && player && i < 300 && len(x - player.x, y - player.y) < minDist) continue;
     return { x: x, y: y };
   }
   return { x: W / 2, y: H / 2 };
@@ -521,12 +531,12 @@ function floatText(x, y, str, col, sc) {
 
 function spawnEnemy(kind) {
   const T = TYPES[kind];
-  const spot = openSpot(120);
+  const spot = openSpot(120, T.r);
   const scale = 1 + (wave - 1) * 0.13;
   enemies.push({
     x: spot.x, y: spot.y, vx: 0, vy: 0, r: T.r, kind: kind,
     hp: Math.round(T.hp * scale), max: Math.round(T.hp * scale),
-    flash: 0, t: Math.random() * 6, side: Math.random() < 0.5 ? 1 : -1, born: 0.45
+    flash: 0, t: grand(0, 6), side: gameRng() < 0.5 ? 1 : -1, born: 0.45
   });
 }
 
@@ -577,14 +587,14 @@ function hurtEnemy(e, dmg, big) {
   if (e.kind === 3) {
     for (let i = 0; i < 2; i++) {
       enemies.push({
-        x: e.x + rand(-6, 6), y: e.y + rand(-6, 6), vx: rand(-40, 40), vy: rand(-40, 40),
-        r: TYPES[1].r, kind: 1, hp: 2, max: 2, flash: 0, t: Math.random() * 6,
-        side: Math.random() < 0.5 ? 1 : -1, born: 0.3
+        x: e.x + grand(-6, 6), y: e.y + grand(-6, 6), vx: grand(-40, 40), vy: grand(-40, 40),
+        r: TYPES[1].r, kind: 1, hp: 2, max: 2, flash: 0, t: grand(0, 6),
+        side: gameRng() < 0.5 ? 1 : -1, born: 0.3
       });
     }
   }
-  if (Math.random() < (e.kind === 2 ? 0.6 : 0.12)) {
-    dropPickup(e.x, e.y, player.hp < 55 && Math.random() < 0.45 ? 1 : 0);
+  if (gameRng() < (e.kind === 2 ? 0.6 : 0.12)) {
+    dropPickup(e.x, e.y, player.hp < 55 && gameRng() < 0.45 ? 1 : 0);
   }
   return true;
 }
@@ -605,7 +615,7 @@ function hurtPlayer(dmg) {
 
 /* ---------- weapons ---------- */
 function shoot() {
-  const spread = rand(-player.bloom, player.bloom);
+  const spread = grand(-player.bloom, player.bloom);
   const a = player.aim + spread;
   const mx = player.x + Math.cos(a) * 11, my = player.y - 4 + Math.sin(a) * 11;
   bullets.push({ x: mx, y: my, vx: Math.cos(a) * 330, vy: Math.sin(a) * 330, t: 0.9 });
@@ -735,27 +745,36 @@ function updateEnemies(dt) {
   }
 }
 
+/* A bullet covers up to 16px per frame, more than a 15px wall cell or a small
+   enemy, so the travelled segment is walked in short steps and the first hit wins. */
 function updateBullets(dt) {
   for (let i = bullets.length - 1; i >= 0; i--) {
     const b = bullets[i];
     b.t -= dt;
-    b.x += b.vx * dt;
-    b.y += b.vy * dt;
-    if (b.t <= 0 || b.x < 0 || b.y < 0 || b.x > W || b.y > H) { bullets.splice(i, 1); continue; }
-    if (solidAt(b.x, b.y)) {
-      burst(b.x, b.y, 3, "#8fa0d8", 60, 0.2);
-      bullets.splice(i, 1);
-      continue;
-    }
-    for (let j = enemies.length - 1; j >= 0; j--) {
-      const e = enemies[j];
-      if (len(b.x - e.x, b.y - e.y) < e.r + 1.5) {
-        burst(b.x, b.y, 3, TYPES[e.kind].col, 70, 0.25);
-        hurtEnemy(e, 1, false);
-        bullets.splice(i, 1);
+    let done = b.t <= 0;
+    const dx = b.vx * dt, dy = b.vy * dt;
+    const n = done ? 0 : 1 + (len(dx, dy) / 4 | 0);
+    for (let s = 0; s < n; s++) {
+      b.x += dx / n;
+      b.y += dy / n;
+      if (b.x < 0 || b.y < 0 || b.x > W || b.y > H) { done = true; break; }
+      if (solidAt(b.x, b.y)) {
+        burst(b.x, b.y, 3, "#8fa0d8", 60, 0.2);
+        done = true;
         break;
       }
+      for (let j = enemies.length - 1; j >= 0; j--) {
+        const e = enemies[j];
+        if (len(b.x - e.x, b.y - e.y) < e.r + 1.5) {
+          burst(b.x, b.y, 3, TYPES[e.kind].col, 70, 0.25);
+          hurtEnemy(e, 1, false);
+          done = true;
+          break;
+        }
+      }
+      if (done) break;
     }
+    if (done) bullets.splice(i, 1);
   }
 }
 
@@ -855,9 +874,9 @@ function update(dt) {
 
   pickTimer -= dt;
   if (pickTimer <= 0) {
-    pickTimer = rand(9, 14);
+    pickTimer = grand(9, 14);
     const spot = openSpot(50);
-    dropPickup(spot.x, spot.y, player.hp < 60 && Math.random() < 0.5 ? 1 : 0);
+    dropPickup(spot.x, spot.y, player.hp < 60 && gameRng() < 0.5 ? 1 : 0);
   }
 }
 

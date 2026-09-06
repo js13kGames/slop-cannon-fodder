@@ -1,0 +1,14 @@
+{
+  "name": "slop-cannon-fodder",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A single-file, dependency-free pixel arena shooter that ships in under 13 KB gzipped.",
+  "license": "MIT",
+  "scripts": {
+    "build": "node build.js",
+    "test": "node build.js --quiet >/dev/null && node --test test/*.test.js",
+    "size": "node build.js",
+    "play": "node -e \"require('child_process').spawn(process.platform==='darwin'?'open':process.platform==='win32'?'start':'xdg-open',['dist/slop-cannon-fodder.min.html'],{shell:true,stdio:'ignore',detached:true}).unref()\"",
+    "dev": "node -e \"require('child_process').spawn(process.platform==='darwin'?'open':process.platform==='win32'?'start':'xdg-open',['src/index.html'],{shell:true,stdio:'ignore',detached:true}).unref()\""
+  }
+}

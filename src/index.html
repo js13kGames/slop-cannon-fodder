@@ -466,6 +466,27 @@ function openSpot(minDist, r) {
   return { x: W / 2, y: H / 2 };
 }
 
+/* Where a body of radius r that wants to appear at x,y may legally land: the
+   wish itself when it fits, else a seeded pick from the open cells in a
+   widening ring around it. null means "nowhere close by", and the caller must
+   drop the body rather than bury it in a wall, where nothing could shoot it. */
+function nearSpot(x, y, r) {
+  if (!blocked(x, y, r)) return { x: x, y: y };
+  const cx = x / CS | 0, cy = y / CS | 0;
+  for (let ring = 1; ring <= 3; ring++) {
+    const fit = [];
+    for (let dy = -ring; dy <= ring; dy++) {
+      for (let dx = -ring; dx <= ring; dx++) {
+        if (Math.abs(dx) < ring && Math.abs(dy) < ring) continue;
+        const px = (cx + dx) * CS + CS / 2, py = (cy + dy) * CS + CS / 2;
+        if (!blocked(px, py, r)) fit.push({ x: px, y: py });
+      }
+    }
+    if (fit.length) return fit[Math.floor(gameRng() * fit.length)];
+  }
+  return null;
+}
+
 /* ---------- terrain painting ---------- */
 function paintTerrain(rnd) {
   bgx.fillStyle = "#0d0d18";
@@ -583,12 +604,16 @@ function hurtEnemy(e, dmg, big) {
   splat(e.x, e.y, T.col2, 14);
   floatText(e.x, e.y - e.r - 4, "+" + T.pts, "#ffe14a", 1);
   enemies.splice(enemies.indexOf(e), 1);
-  /* regressions never die quietly */
+  /* regressions never die quietly: children get a seeded wish near the corpse,
+     then a spot that actually has room for their radius */
   if (e.kind === 3) {
+    const cr = TYPES[1].r;
     for (let i = 0; i < 2; i++) {
+      const spot = nearSpot(e.x + grand(-6, 6), e.y + grand(-6, 6), cr);
+      if (!spot) continue;
       enemies.push({
-        x: e.x + grand(-6, 6), y: e.y + grand(-6, 6), vx: grand(-40, 40), vy: grand(-40, 40),
-        r: TYPES[1].r, kind: 1, hp: 2, max: 2, flash: 0, t: grand(0, 6),
+        x: spot.x, y: spot.y, vx: grand(-40, 40), vy: grand(-40, 40),
+        r: cr, kind: 1, hp: 2, max: 2, flash: 0, t: grand(0, 6),
         side: gameRng() < 0.5 ? 1 : -1, born: 0.3
       });
     }

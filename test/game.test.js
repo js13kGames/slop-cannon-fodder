@@ -60,6 +60,7 @@ function loadGame(visual) {
     "  initWorld: initWorld, startGame: startGame, update: update,",
     "  updateBullets: updateBullets, spawnEnemy: spawnEnemy, blocked: blocked,",
     "  openSpot: openSpot, mouse: mouse, keys: keys,",
+    "  hurtEnemy: hurtEnemy, player: function () { return player; },",
     "  grenade: function () { wantGrenade = true; },",
     "  invincible: function () { player.hp = 1e9; },",
     "  grid: function () { return Array.from(grid); },",
@@ -311,9 +312,106 @@ test("no body is ever accepted while overlapping a wall", function () {
   assert.ok(monoliths > 0, "monoliths (radius 10) took part");
 });
 
+/* Put a lone regression at x,y, kill it, and hand back whatever it split into. */
+function killRegressionAt(g, x, y) {
+  const list = g.enemies();
+  list.length = 0;
+  const parent = {
+    x: x, y: y, vx: 0, vy: 0, r: g.TYPES[3].r, kind: 3,
+    hp: 1, max: 1, flash: 0, t: 0, side: 1, born: 0
+  };
+  list.push(parent);
+  g.hurtEnemy(parent, 99, false);
+  assert.ok(list.indexOf(parent) < 0, "the parent regression died");
+  return list.slice();
+}
+
+/* True when the cell has a wall (or the arena border) as one of its 8 neighbours. */
+function hugsWall(grid, cx, cy) {
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const nx = cx + dx, ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) return true;
+      if (grid[nx + ny * GW] === 1) return true;
+    }
+  }
+  return false;
+}
+
+test("regression children never split into a wall, however tight the corpse sits", function () {
+  const g = loadGame(0.5);
+  const seeds = ["20260906", "SLOP", "PROD", "ZZZZ", "42", "ONCALLUNICORN"];
+  let splits = 0;
+  for (const seed of seeds) {
+    g.startGame(seed);
+    const grid = g.grid();
+    const pr = g.TYPES[3].r, cr = g.TYPES[1].r;
+    const nudge = CS / 2 - pr - 0.1;    // as flush against a neighbouring cell as r=7 fits
+    for (let cy = 1; cy < GH - 1; cy++) {
+      for (let cx = 1; cx < GW - 1; cx++) {
+        if (grid[cx + cy * GW] === 1 || !hugsWall(grid, cx, cy)) continue;
+        const bx = cx * CS + CS / 2, by = cy * CS + CS / 2;
+        for (const ox of [0, nudge, -nudge]) {
+          for (const oy of [0, nudge, -nudge]) {
+            const x = bx + ox, y = by + oy;
+            assert.ok(!g.blocked(x, y, pr), "the parent regression itself must be a legal body");
+            const kids = killRegressionAt(g, x, y);
+            assert.strictEqual(kids.length, 2,
+              "seed " + seed + ": a regression at " + x + "," + y + " must split in two");
+            for (const k of kids) {
+              assert.strictEqual(k.kind, 1);
+              assert.strictEqual(k.r, cr);
+              const where = "seed " + seed + ": child at " + k.x + "," + k.y +
+                " from a corpse at " + x + "," + y;
+              assert.ok(!overlapsSolid(grid, k.x, k.y, k.r), where + " overlaps a wall");
+              assert.ok(!g.blocked(k.x, k.y, k.r), where + " is blocked");
+              assert.ok(Math.hypot(k.x - x, k.y - y) <= 4 * CS, where + " was flung across the arena");
+            }
+            splits++;
+          }
+        }
+      }
+    }
+  }
+  assert.ok(splits > 500, "only " + splits + " wall-hugging splits were exercised");
+});
+
+test("children of a wall-hugging regression stay mobile, so the incident can close", function () {
+  const g = loadGame(0.5);
+  for (const seed of ["TUNNEL", "SLOP"]) {
+    g.startGame(seed);
+    const grid = g.grid();
+    const wall = wallRun(grid);
+    assert.ok(wall, "seed " + seed + " needs a one-cell wall with open sides");
+
+    const pr = g.TYPES[3].r;
+    /* the corpse is pressed flat against the wall's left face */
+    const x = wall.cx * CS - pr - 0.1, y = wall.cy * CS + CS / 2;
+    assert.ok(!g.blocked(x, y, pr), "the corpse position is a legal body");
+
+    const kids = killRegressionAt(g, x, y);
+    assert.strictEqual(kids.length, 2);
+    const start = kids.map(function (k) { return { x: k.x, y: k.y }; });
+
+    g.mouse.fire = false;
+    for (let i = 0; i < 240; i++) {
+      g.invincible();
+      g.update(1 / 60);
+      for (const k of kids) {
+        assert.ok(!overlapsSolid(grid, k.x, k.y, k.r),
+          "seed " + seed + " frame " + i + ": a split child ended up inside a wall");
+      }
+    }
+    kids.forEach(function (k, i) {
+      assert.ok(Math.hypot(k.x - start[i].x, k.y - start[i].y) > CS,
+        "seed " + seed + ": child " + i + " never left its spawn point, so it is wedged");
+    });
+  }
+});
+
 test("only cosmetic randomness may call Math.random", function () {
   const js = GAME_JS.replace(/\/\*[\s\S]*?\*\//g, "");
-  const gameplay = ["spawnEnemy", "hurtEnemy", "steerAngle", "buildQueue", "nextWave", "shoot", "openSpot", "update"];
+  const gameplay = ["spawnEnemy", "hurtEnemy", "steerAngle", "buildQueue", "nextWave", "shoot", "openSpot", "nearSpot", "update"];
   for (const name of gameplay) {
     const body = js.split("function " + name + "(")[1];
     assert.ok(body, "missing function " + name);

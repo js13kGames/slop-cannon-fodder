@@ -53,7 +53,7 @@ npm run dev     # opens the readable source, which is equally playable
 | Slop | the baseline blob: steady, plentiful, mildly damp |
 | Flake | fast, erratic, dies quickly — an intermittent test failure with legs |
 | Monolith | slow, enormous health pool, hits like a migration |
-| Regression | splits into two Flakes when killed, because of course it does |
+| Regression | splits into two Flakes when killed, because of course it does — each child is placed on the nearest open ground, never inside a wall |
 
 Flakes join at incident 2, Monoliths at 3, Regressions at 5.
 
@@ -130,6 +130,9 @@ gaps removed) that preserves the spaces between words in prose.
   and a body's box test catches every cell it overlaps, not just its corners
 * a bullet moving 16.5 px in one frame cannot tunnel through a 15 px wall or skip a small enemy,
   the nearest enemy on the path is hit first, and reach, lifetime and kill scoring are unchanged
+* a Regression killed while pressed flat against a wall — every wall-hugging cell of six seeds —
+  still splits into two Flakes, and every child lands unblocked, near the corpse and able to move,
+  so it can be shot and the incident can close
 
 The terrain tests lift the generator straight out of `src/index.html` between `/*<gen>*/` markers;
 the gameplay tests run the real `<script>` block against a stub DOM/canvas. Nothing test-only is

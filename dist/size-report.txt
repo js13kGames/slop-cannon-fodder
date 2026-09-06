@@ -1,5 +1,5 @@
 Slop Cannon Fodder - size report
-generated 2026-09-06T21:25:36.834Z
+generated 2026-09-06T21:26:42.201Z
 
 readable source   src/index.html                 40529 bytes
 production build  dist/slop-cannon-fodder.min.html 24929 bytes  (minified raw)

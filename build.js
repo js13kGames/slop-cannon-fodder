@@ -284,7 +284,7 @@ function minifyJs(src, opts) {
     if (out && needsSpace(out, v)) out += " ";
     out += v;
   }
-  return { code: out, renamed: map.size, tokens: toks.length };
+  return { code: out, renamed: map.size, tokens: toks.length, names: map };
 }
 
 function minifyCss(css) {
@@ -316,7 +316,7 @@ function externalRefs(html) {
     [/\bfetch\s*\(/, "fetch()"],
     [/XMLHttpRequest/, "XMLHttpRequest"],
     [/\bimport\s*\(/, "dynamic import"],
-    [/url\(\s*["']?(?!data:)/i, "external css url()"]
+    [/\burl\(\s*["']?(?!data:)/i, "external css url()"]
   ];
   for (let i = 0; i < patterns.length; i++) {
     if (patterns[i][0].test(html)) bad.push(patterns[i][1]);

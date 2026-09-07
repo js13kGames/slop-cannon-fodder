@@ -20,16 +20,13 @@
   #stage {
     position: fixed;
     inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: radial-gradient(120% 90% at 50% 0%, #191033 0%, #05050a 70%);
   }
   canvas {
     display: block;
+    width: 100%;
+    height: 100%;
     image-rendering: pixelated;
     background: #0d0d18;
-    box-shadow: 0 0 0 2px #2a1b3d, 0 0 44px #ff5cc822;
     cursor: none;
     touch-action: none;
   }
@@ -52,8 +49,18 @@
     text-align: center;
     background: #06040cdd;
     backdrop-filter: blur(2px);
+    overflow-y: auto;
   }
-  .off { display: none; }
+  .panel > * { flex-shrink: 0; }
+  @media(max-height:650px) { .panel { justify-content:flex-start; gap:10px; } }
+  button { min-height:44px; touch-action:manipulation; }
+  summary { cursor:pointer; padding:8px; }
+  #notice { position:fixed; top:12px; left:5%; width:90%; z-index:5; color:#ffe14a; text-align:center; pointer-events:none; }
+  #controls { position:fixed; right:max(8px,env(safe-area-inset-right)); bottom:max(18px,env(safe-area-inset-bottom)); }
+  #nextBtn { position:fixed; top:44px; left:50%; transform:translateX(-50%); }
+  textarea { width:min(90vw,620px); min-height:110px; color:#ffd9f2; background:#150d22; user-select:text; }
+  #overStats { white-space:pre-line; }
+  .off { display: none !important; }
   h1 {
     font-size: clamp(24px, 6vw, 52px);
     letter-spacing: 4px;
@@ -99,33 +106,40 @@
 
 <div class="panel" id="titleScreen">
   <h1>SLOP CANNON FODDER</h1>
-  <p>The pipeline shipped slop straight to production. You are the on-call unicorn.
-     Hold the line, purge the slop, keep uptime above zero.</p>
-  <div class="row">
+  <p>How long can you keep production alive?</p>
+  <button id="deployBtn">DEPLOY</button>
+  <details><summary>Seed / UTC</summary><div class="row">
     <label class="dim" for="seedInput">SEED</label>
     <input id="seedInput" maxlength="14" spellcheck="false" autocomplete="off">
-    <button id="deployBtn">DEPLOY</button>
-  </div>
-  <div class="keys">
+    <button id="todayBtn">TODAY UTC</button>
+  </div></details>
+  <details><summary>Controls</summary><div class="keys">
     <b>WASD / ARROWS</b><span>move</span>
     <b>MOUSE</b><span>aim</span>
     <b>HOLD LEFT MOUSE</b><span>automatic rifle</span>
     <b>RIGHT MOUSE / SPACE</b><span>throw hotfix grenade</span>
     <b>P / ESC</b><span>pause</span>
     <b>M</b><span>mute</span>
-  </div>
+  </div><p>Touch: left moves, right fires. Hotfix hurts you too!<br>Upgrades after incidents 2 / 4 / 6.</p></details>
   <div class="dim" id="bestLine"></div>
 </div>
 
 <div class="panel off" id="overScreen">
   <h2>PRODUCTION IS DOWN</h2>
   <div class="stat" id="overStats"></div>
+  <button id="retryBtn">RETRY SAME SEED</button>
   <div class="row">
-    <button id="retryBtn">RETRY SAME SEED</button>
+    <button id="shareBtn">CHALLENGE FRIEND</button>
+    <button id="pngBtn">SAVE REPORT PNG</button>
     <button id="newSeedBtn">NEW SEED</button>
   </div>
-  <div class="dim">Post-mortem optional. Revenge mandatory.</div>
+  <textarea id="reportText" class="off" readonly aria-label="Copyable incident report"></textarea>
+  <a id="imageLink" class="off">Open PNG to save</a>
 </div>
+<div id="notice" role="status"></div>
+<div id="controls" class="row off"><button id="hotfixBtn">HOTFIX</button><button id="pauseBtn">PAUSE</button></div>
+<button id="nextBtn" class="off">DEPLOY NEXT [N]</button>
+<div id="draftScreen" class="panel off"><h2>CHOOSE A TRADEOFF</h2><button id="up0"></button><button id="up1"></button><button id="up2"></button></div>
 
 <script>
 "use strict";
@@ -142,6 +156,7 @@ const CS = 15;                   // terrain cell size in pixels
 const GW = W / CS | 0;           // grid width  (32)
 const GH = H / CS | 0;           // grid height (18)
 const MAX_GRENADES = 5;
+const RULES = 2;
 
 const cv = document.getElementById("cv");
 const ctx = cv.getContext("2d");
@@ -276,20 +291,21 @@ function rand(a, b) { return a + Math.random() * (b - a); }
 function grand(a, b) { return a + gameRng() * (b - a); }
 function len(x, y) { return Math.sqrt(x * x + y * y); }
 
-/* ---------- display scaling (integer when it fits) ---------- */
-function resize() {
-  let s = Math.min(window.innerWidth / W, window.innerHeight / H);
-  if (s >= 1) s = Math.floor(s);
-  cv.style.width = (W * s) + "px";
-  cv.style.height = (H * s) + "px";
-}
-window.addEventListener("resize", resize);
-resize();
-
 /* ---------- input ---------- */
 const keys = {};
 const mouse = { x: W / 2, y: H / 2, fire: false };
 let wantGrenade = false;
+let moveTouch = null, aimTouch = null, touchX = 0, touchY = 0, enterHeld = false;
+
+function clearInput() {
+  document.activeElement?.blur();
+  for (const k in keys) keys[k] = false;
+  mouse.fire = false; wantGrenade = false; touchX = 0; touchY = 0;
+  const ids = [moveTouch && moveTouch.id, aimTouch];
+  moveTouch = null; aimTouch = null;
+  for (let i = 0; i < ids.length; i++) if (ids[i] != null && cv.hasPointerCapture(ids[i])) cv.releasePointerCapture(ids[i]);
+  if (player) { player.vx = 0; player.vy = 0; }
+}
 
 function keyName(e) {
   const k = e.key;
@@ -304,31 +320,61 @@ function toWorld(e) {
 
 window.addEventListener("keydown", function (e) {
   const k = keyName(e);
-  if (e.target && e.target.tagName === "INPUT") return;   // let the seed field be typed into
+  const wasEnter = enterHeld;
+  if (k === "Enter") enterHeld = true;
+  if (e.target && (e.target.isContentEditable || /^(INPUT|TEXTAREA|BUTTON|A|SELECT|SUMMARY)$/.test(e.target.tagName))) return;
   if (k === " " || k.indexOf("Arrow") === 0) e.preventDefault();
   if (e.repeat) return;
+  if (k === "Enter" && !wasEnter && state === "dead" && performance.now() - deadAt > 350) startGame(seedText);
+  if (state === "draft" && /^[123]$/.test(k)) chooseUpgrade(Number(k) - 1);
+  if (k === "n") deployNext();
   keys[k] = true;
   audioOn();
   if (k === " " && state === "play") wantGrenade = true;
   if (k === "p" || k === "Escape") togglePause();
   if (k === "m") muted = !muted;
 });
-window.addEventListener("keyup", function (e) { keys[keyName(e)] = false; });
-window.addEventListener("blur", function () {
-  for (const k in keys) keys[k] = false;
-  mouse.fire = false;
-  if (state === "play") togglePause();
-});
+window.addEventListener("keyup", function (e) { keys[keyName(e)] = false; if (e.key === "Enter") enterHeld = false; });
+function suspend() { clearInput(); if (state === "play") togglePause(); }
+window.addEventListener("blur", suspend);
+window.addEventListener("resize", suspend);
+document.addEventListener("visibilitychange", function () { if (document.hidden) suspend(); });
 
-cv.addEventListener("mousemove", toWorld);
-cv.addEventListener("mousedown", function (e) {
-  toWorld(e);
+cv.addEventListener("pointerdown", function (e) {
+  if (state !== "play") return;
   audioOn();
-  if (e.button === 0) mouse.fire = true;
-  if (e.button === 2 && state === "play") wantGrenade = true;
+  if (e.pointerType === "mouse") {
+    aimTouch = e.pointerId;
+    toWorld(e);
+    if (e.button === 0) mouse.fire = true;
+    if (e.button === 2) wantGrenade = true;
+  } else if (e.clientX < cv.getBoundingClientRect().width / 2 && !moveTouch) {
+    moveTouch = {id:e.pointerId,x:e.clientX,y:e.clientY};
+  } else if (e.clientX >= cv.getBoundingClientRect().width / 2 && aimTouch === null) {
+    aimTouch = e.pointerId; toWorld(e); mouse.fire = true;
+  } else return;
+  cv.setPointerCapture(e.pointerId);
   e.preventDefault();
 });
-window.addEventListener("mouseup", function (e) { if (e.button === 0) mouse.fire = false; });
+cv.addEventListener("pointermove", function (e) {
+  if (e.pointerType === "mouse" && state === "play" && aimTouch === e.pointerId) {
+    mouse.fire = !!(e.buttons & 1);
+    if (e.button === 2 && (e.buttons & 2)) wantGrenade = true;
+  }
+  if (moveTouch && moveTouch.id === e.pointerId) {
+    const dx = e.clientX - moveTouch.x, dy = e.clientY - moveTouch.y, d = len(dx,dy);
+    touchX = d < 8 ? 0 : dx / Math.max(36,d);
+    touchY = d < 8 ? 0 : dy / Math.max(36,d);
+  } else if ((e.pointerType === "mouse" && aimTouch === null) || e.pointerId === aimTouch) toWorld(e);
+});
+function releasePointer(e) {
+  if (moveTouch && moveTouch.id === e.pointerId) { moveTouch = null; touchX = 0; touchY = 0; }
+  if (e.pointerType === "mouse" || e.pointerId === aimTouch) { aimTouch = null; mouse.fire = false; }
+  if (cv.hasPointerCapture(e.pointerId)) cv.releasePointerCapture(e.pointerId);
+}
+cv.addEventListener("pointerup", releasePointer);
+cv.addEventListener("pointercancel", releasePointer);
+cv.addEventListener("lostpointercapture", releasePointer);
 window.addEventListener("contextmenu", function (e) { e.preventDefault(); });
 
 function held(a, b) { return keys[a] === true || keys[b] === true; }
@@ -405,14 +451,14 @@ const TYPES = [
 ];
 
 const QUIPS = [
-  "IT WORKED LOCALLY",
-  "SHIP IT ON FRIDAY",
-  "WHO APPROVED THIS",
-  "THE TESTS WERE FLAKY",
-  "JUST ONE MORE PATCH",
-  "ROLLBACK IS A MYTH",
-  "SCALING THE SLOP",
-  "THE LOGS ARE SCREAMING"
+  "WORKED LOCALLY",
+  "SHIP ON FRIDAY",
+  "WHO APPROVED",
+  "FLAKY TESTS",
+  "ONE MORE PATCH",
+  "ROLLBACK MYTH",
+  "SCALING SLOP",
+  "SCREAMING LOGS"
 ];
 
 /* ---------- world state ---------- */
@@ -425,6 +471,12 @@ let bullets = [], enemies = [], grenades = [], pickups = [], parts = [], texts =
 let score = 0, kills = 0, wave = 0, best = 0;
 let queue = [], spawnTimer = 0, breakTimer = 0, banner = 0, bannerMsg = "";
 let shake = 0, clock = 0, hitFlash = 0;
+let closedWaves = 0, damageCause = "", result = null, deadAt = 0;
+let upgrades = [], choices = [], rifle = 1, speed = 1, armor = 1;
+let challenge = null, sessionBest = {}, hasBest = false, daily = "";
+const UPGRADE_NAMES = ["Overclock", "Runner", "Hardened"];
+const UPGRADE_HELP = ["Rifle interval -20%; move -10%", "Move +20%; rifle interval +15%", "Damage -25%; rifle interval +15%"];
+const ENEMY_NAMES = ["SLOP", "FLAKE", "MONOLITH", "REGRESSION"];
 
 /* ---------- grid helpers ---------- */
 function solidCell(cx, cy) {
@@ -573,14 +625,17 @@ function buildQueue(n) {
     const r = gameRng();
     let t = 0;
     if (n >= 3 && r < 0.1 + n * 0.008) t = 2;
-    else if (n >= 5 && r < 0.32) t = 3;
+    else if (n >= 4 && r < 0.32) t = 3;
     else if (n >= 2 && r < 0.55) t = 1;
     q.push(t);
   }
+  if (n >= 2 && n <= 4) q[q.length - 1] = n - 1;
   return q;
 }
 
 function nextWave() {
+  breakTimer = 0;
+  show("nextBtn", false);
   wave++;
   queue = buildQueue(wave);
   spawnTimer = 0.4;
@@ -624,8 +679,11 @@ function hurtEnemy(e, dmg, big) {
   return true;
 }
 
-function hurtPlayer(dmg) {
+function hurtPlayer(dmg, cause) {
   if (player.inv > 0 || state !== "play") return;
+  damageCause = cause;
+  dmg = Math.max(1, Math.round(dmg * armor));
+  floatText(player.x, player.y - 25, "-" + dmg + " " + cause, "#ff5b5b");
   player.hp -= dmg;
   player.inv = 0.85;
   shake = Math.max(shake, 6);
@@ -689,7 +747,7 @@ function explode(x, y) {
     score += bonus;
     floatText(x, y - 16, "MULTI PATCH X" + n, "#ffe14a", 2);
   }
-  if (len(player.x - x, player.y - y) < BOOM_R * 0.75) hurtPlayer(12);
+  if (len(player.x - x, player.y - y) < BOOM_R * 0.75) hurtPlayer(12, "OWN HOTFIX");
 }
 
 /* ---------- simulation ---------- */
@@ -708,10 +766,11 @@ function updatePlayer(dt) {
   const p = player;
   let mx = (held("d", "ArrowRight") ? 1 : 0) - (held("a", "ArrowLeft") ? 1 : 0);
   let my = (held("s", "ArrowDown") ? 1 : 0) - (held("w", "ArrowUp") ? 1 : 0);
+  mx += touchX; my += touchY;
   const m = len(mx, my);
-  if (m > 0) { mx /= m; my /= m; p.walk += dt; } else p.walk = 0;
+  if (m > 0) { mx /= Math.max(1,m); my /= Math.max(1,m); p.walk += dt; } else p.walk = 0;
 
-  const SPD = 98;
+  const SPD = 98 * speed;
   p.vx += (mx * SPD - p.vx) * Math.min(1, dt * 16);
   p.vy += (my * SPD - p.vy) * Math.min(1, dt * 16);
   moveBody(p, p.vx * dt, p.vy * dt);
@@ -723,7 +782,7 @@ function updatePlayer(dt) {
   p.cool -= dt;
   if (mouse.fire && p.cool <= 0) {
     shoot();
-    p.cool = 0.085;
+    p.cool = 0.085 * rifle;
   }
   if (!mouse.fire) p.bloom = Math.max(0.02, p.bloom - dt * 0.35);
   p.muzzle -= dt;
@@ -763,7 +822,8 @@ function updateEnemies(dt) {
 
     const dd = len(e.x - player.x, e.y - player.y);
     if (dd < e.r + player.r) {
-      hurtPlayer(T.dmg);
+      hurtPlayer(T.dmg, ENEMY_NAMES[e.kind]);
+      if (state === "dead") return;
       e.vx = (e.x - player.x) / (dd || 1) * 90;
       e.vy = (e.y - player.y) / (dd || 1) * 90;
     }
@@ -816,6 +876,7 @@ function updateGrenades(dt) {
     if (g.fuse <= 0) {
       explode(g.x, g.y);
       grenades.splice(i, 1);
+      if (state === "dead") return;
     }
   }
 }
@@ -871,11 +932,14 @@ function updateFx(dt) {
 let pickTimer = 10;
 
 function update(dt) {
+  if (state !== "play") return;
   clock += dt;
   updatePlayer(dt);
   updateEnemies(dt);
+  if (state !== "play") return;
   updateBullets(dt);
   updateGrenades(dt);
+  if (state !== "play") return;
   updatePickups(dt);
   updateFx(dt);
 
@@ -889,12 +953,20 @@ function update(dt) {
       spawnEnemy(queue.pop());
       spawnTimer = Math.max(0.22, 0.85 - wave * 0.035);
     }
-  } else if (!enemies.length) {
+  } else if (!enemies.length && closedWaves < wave) {
+    closedWaves++;
     const bonus = 50 * wave;
     score += bonus;
     floatText(player.x, player.y - 24, "INCIDENT CLOSED +" + bonus, "#7ee0a0", 1);
     if (player.gren < MAX_GRENADES) player.gren++;
-    breakTimer = 4.2;
+    breakTimer = 1.8;
+    if (wave <= 6 && wave % 2 === 0) {
+      state = "draft"; clearInput(); choices = upgradeOrder(wave);
+      for (let i = 0; i < 3; i++) el("up" + i).textContent = (i + 1) + " " + UPGRADE_NAMES[choices[i]] + ": " + UPGRADE_HELP[choices[i]];
+      show("draftScreen", true);
+      return;
+    }
+    show("nextBtn", true);
   }
 
   pickTimer -= dt;
@@ -1104,6 +1176,8 @@ function drawHud() {
   const sd = "SEED " + seedText;
   text(sd, W - 4 - textW(sd, 1), H - 10, "#7d6f92");
   textC("PURGED " + kills, W / 2, H - 10, "#5f5378");
+  if (hitFlash > 0) textC(damageCause, W / 2, 22, "#ff5b5b", 2);
+  if (wave === 1 && clock < 12) textC(clock < 6 ? "MOVE WASD/LEFT TOUCH - FIRE MOUSE/RIGHT TOUCH" : "SPACE/HOTFIX - YOUR BLAST HURTS YOU TOO", W / 2, H - 24, "#ffd9f2");
 }
 
 function drawBanner() {
@@ -1167,6 +1241,12 @@ function draw() {
   }
 
   /* crosshair */
+  if (moveTouch) {
+    const r = cv.getBoundingClientRect(), x = moveTouch.x / r.width * W, y = moveTouch.y / r.height * H;
+    ctx.strokeStyle = "#ff77cf";
+    ctx.strokeRect(x - 9,y - 9,18,18);
+    ctx.fillStyle = "#ffd9f2"; ctx.fillRect(x + touchX * 9 - 2,y + touchY * 9 - 2,4,4);
+  }
   const mx = Math.round(mouse.x), my = Math.round(mouse.y);
   ctx.fillStyle = "#ff77cf";
   ctx.fillRect(mx - 4, my, 3, 1);
@@ -1201,15 +1281,16 @@ const overStats = document.getElementById("overStats");
 const seedInput = document.getElementById("seedInput");
 const bestLine = document.getElementById("bestLine");
 
-/* the daily seed always follows the player's LOCAL calendar date */
-function localSeed() {
-  const d = new Date();
-  return String(d.getFullYear()) + pad(d.getMonth() + 1, 2) + pad(d.getDate(), 2);
+function el(id) { return document.getElementById(id); }
+function show(id, on) { el(id).classList[on ? "remove" : "add"]("off"); }
+function notice(msg) { el("notice").textContent = msg; }
+function utcSeed(d) {
+  return (d || new Date()).toISOString().slice(0,10).replace(/-/g,"");
 }
 
 function cleanSeed(s) {
   s = String(s == null ? "" : s).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 14);
-  return s || localSeed();
+  return s || utcSeed();
 }
 
 function randomSeed() {
@@ -1221,11 +1302,94 @@ function randomSeed() {
 }
 
 function loadBest() {
-  try { best = parseInt(window.localStorage.getItem("scf.best"), 10) || 0; } catch (err) { best = 0; }
-  if (best > 0) bestLine.textContent = "PERSONAL BEST " + best;
+  const k = bestKey();
+  best = sessionBest[k] || 0;
+  hasBest = k in sessionBest;
+  try {
+    const v = window.localStorage.getItem(k);
+    if (v !== null && /^(0|[1-9][0-9]*)$/.test(v) && Number.isSafeInteger(Number(v))) { best = Math.max(best,Number(v)); hasBest = true; }
+  } catch (err) { storageWarning(); }
+  bestLine.textContent = "RULES " + RULES + " / " + seedText + " / PERSONAL BEST " + best;
+}
+function bestKey() { return "scf." + RULES + "." + seedText; }
+function storageWarning() { notice("Storage unavailable: session-only bests."); }
+
+function upgradeOrder(stage) {
+  const rnd = mulberry32(hashSeed(seedText + RULES + ":" + stage)), order = [0,1,2];
+  for (let i = 2; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)), v = order[i]; order[i] = order[j]; order[j] = v; }
+  return order;
+}
+function chooseUpgrade(i) {
+  if (state !== "draft" || !Number.isInteger(i) || i < 0 || i > 2) return;
+  const u = choices[i];
+  upgrades.push(UPGRADE_NAMES[u]);
+  rifle *= u === 0 ? .8 : 1.15;
+  speed *= u === 0 ? .9 : u === 1 ? 1.2 : 1;
+  if (u === 2) armor *= .75;
+  clearInput(); show("draftScreen", false); state = "play"; nextWave();
+}
+function deployNext() { if (state === "play" && breakTimer > 0) { clearInput(); nextWave(); } }
+
+function parseChallenge(hash) {
+  if (hash.length > 100 || !/^#v=1&r=2&s=[A-Z0-9]{1,14}&t=(0|[1-9][0-9]{0,15})&c=(0|[1-9][0-9]{0,5})$/.test(hash)) throw Error("Invalid/incompatible challenge.");
+  const fields = hash.slice(1).split("&");
+  const target = Number(fields[3].slice(2)), closed = Number(fields[4].slice(2));
+  if (!Number.isSafeInteger(target)) throw Error("Invalid/incompatible challenge.");
+  return {seed:fields[2].slice(2),score:target,closed:closed};
+}
+function challengeText() {
+  if (!challenge || challenge.seed !== seedText) return "";
+  return "Unverified challenge: " + challenge.score + " / " + challenge.closed + " closed" +
+    (result ? " / " + (result.score >= challenge.score ? "score beaten/tied" : (challenge.score - result.score) + " short") : "");
+}
+function report() {
+  return "SLOP CANNON FODDER\n" + (daily ? "UTC daily " + daily : "Seed " + seedText) + " / rules " + RULES +
+    "\nScore " + result.score + " / closed " + result.closed + " / kills " + result.kills +
+    "\nCause: " + result.cause + "\n" + result.comparison + "\nUpgrades: " + (upgrades.join(", ") || "none") +
+    "\n" + challengeText();
+}
+function shareText() {
+  const hash = "#v=1&r=" + RULES + "&s=" + seedText + "&t=" + result.score + "&c=" + result.closed;
+  return report() + "\n" + (/^https?:$/.test(window.location.protocol) ?
+    window.location.href.split(/[?#]/)[0] + hash :
+    "Offline: send seed/target. Open rules " + RULES + " and enter seed.");
+}
+function shareReport() {
+  const value = shareText(), box = el("reportText");
+  box.value = value; show("reportText", true);
+  const nav = window.navigator || {};
+  try {
+    const action = nav.share ? nav.share({title:"Slop Cannon Fodder",text:value}) :
+      nav.clipboard ? nav.clipboard.writeText(value) : null;
+    if (!action) throw Error();
+    action.then(function () { notice(nav.share ? "Shared." : "Copied."); }, shareFailure);
+  } catch (err) { shareFailure(err); }
+}
+function shareFailure(err) { notice(err.name === "AbortError" ? "Cancelled. Copy below." : "Select and copy below."); }
+function reportCanvas() {
+  const image = document.createElement("canvas");
+  image.width = 960; image.height = 760;
+  const ix = image.getContext("2d");
+  ix.fillStyle = "#0d0d18"; ix.fillRect(0,0,960,760);
+  ix.imageSmoothingEnabled = false;
+  ix.drawImage(cv,0,0,960,540);
+  ix.fillStyle = "#ffd9f2"; ix.font = "18px monospace";
+  const lines = report().split("\n");
+  for (let i = 0; i < lines.length; i++) ix.fillText(lines[i],18,568 + i * 27,924);
+  return image;
+}
+function saveReport() {
+  try {
+    const link = el("imageLink");
+    link.href = reportCanvas().toDataURL("image/png");
+    link.download = "incident-" + seedText + ".png";
+    show("imageLink", true); link.click();
+    notice("PNG ready; open link to save.");
+  } catch (err) { notice("PNG failed. Copy below."); el("reportText").value = report(); show("reportText",true); }
 }
 
 function initWorld(seed) {
+  clearInput();
   seedText = cleanSeed(seed);
   const h = hashSeed(seedText);
   grid = buildGrid(mulberry32(h), GW, GH);
@@ -1239,9 +1403,9 @@ function initWorld(seed) {
   bullets = []; enemies = []; grenades = []; pickups = []; parts = []; texts = []; booms = [];
   score = 0; kills = 0; wave = 0; shake = 0; hitFlash = 0; banner = 0; clock = 0;
   queue = []; spawnTimer = 0; breakTimer = 0; pickTimer = 8;
-  mouse.fire = false;
-  wantGrenade = false;
-  for (const k in keys) keys[k] = false;
+  closedWaves = 0; damageCause = ""; result = null; upgrades = []; choices = []; rifle = 1; speed = 1; armor = 1;
+  daily = seedText === utcSeed() ? seedText : "";
+  loadBest();
 }
 
 /* a full restart, no page reload involved */
@@ -1249,27 +1413,33 @@ function startGame(seed) {
   initWorld(seed);
   titleScreen.classList.add("off");
   overScreen.classList.add("off");
+  show("draftScreen",false); show("controls",true); show("reportText",false); show("imageLink",false);
   state = "play";
   nextWave();
 }
 
 function gameOver() {
   state = "dead";
-  mouse.fire = false;
+  clearInput(); deadAt = performance.now();
+  show("controls", false); show("nextBtn",false);
   shake = 12;
   burst(player.x, player.y, 34, PINK, 160, 0.9);
   splat(player.x, player.y, PINK_LO, 20);
   sfx(6);
-  if (score > best) { best = score; try { window.localStorage.setItem("scf.best", String(best)); } catch (err) {} }
-  overStats.innerHTML = "SCORE <b>" + score + "</b> &middot; INCIDENT <b>#" + wave +
-    "</b> &middot; SLOP PURGED <b>" + kills + "</b><br>SEED <b>" + seedText +
-    "</b> &middot; BEST <b>" + best + "</b>";
+  result = {score:score,kills:kills,closed:closedWaves,cause:damageCause,
+    comparison:!hasBest ? "First run" : score > best ? "New best (previous " + best + ")" :
+      score === best ? "Tied personal best " + best : (best - score) + " short of previous best " + best + (score >= best * .9 ? " - SO CLOSE!" : "")};
+  best = Math.max(best,score); sessionBest[bestKey()] = best;
+  try { window.localStorage.setItem(bestKey(),String(best)); } catch (err) { storageWarning(); }
+  overStats.textContent = report();
   overScreen.classList.remove("off");
 }
 
 function togglePause() {
-  if (state === "play") { state = "pause"; mouse.fire = false; }
+  clearInput();
+  if (state === "play") state = "pause";
   else if (state === "pause") state = "play";
+  el("pauseBtn").textContent = state === "pause" ? "RESUME" : "PAUSE";
 }
 
 document.getElementById("deployBtn").addEventListener("click", function () {
@@ -1277,8 +1447,15 @@ document.getElementById("deployBtn").addEventListener("click", function () {
   startGame(seedInput.value);
 });
 seedInput.addEventListener("keydown", function (e) {
-  if (e.key === "Enter") { audioOn(); startGame(seedInput.value); }
+  if (e.key === "Enter" && !e.repeat && state === "title") { audioOn(); startGame(seedInput.value); }
 });
+el("todayBtn").addEventListener("click", function () { seedInput.value = utcSeed(); startGame(seedInput.value); });
+el("pauseBtn").addEventListener("click", togglePause);
+el("hotfixBtn").addEventListener("pointerdown", function (e) { if (state === "play") wantGrenade = true; e.preventDefault(); });
+el("nextBtn").addEventListener("click", deployNext);
+el("shareBtn").addEventListener("click", shareReport);
+el("pngBtn").addEventListener("click", saveReport);
+for (let i = 0; i < 3; i++) el("up" + i).addEventListener("click", function () { chooseUpgrade(i); });
 document.getElementById("retryBtn").addEventListener("click", function () {
   audioOn();
   startGame(seedText);
@@ -1298,13 +1475,17 @@ function frame(ts) {
   last = ts;
   if (!(dt > 0)) dt = 0.016;
   if (state === "play") update(Math.min(0.05, dt));
-  else if (state !== "pause") { clock += Math.min(0.05, dt); updateFx(Math.min(0.05, dt)); }
+  else if (state === "title" || state === "dead") { clock += Math.min(0.05, dt); updateFx(Math.min(0.05, dt)); }
   draw();
 }
 
-seedInput.value = localSeed();
-loadBest();
+seedInput.value = utcSeed();
+if (window.location.hash) {
+  try { challenge = parseChallenge(window.location.hash); seedInput.value = challenge.seed; }
+  catch (err) { notice(err.message); }
+}
 initWorld(seedInput.value);
+if (challenge) bestLine.textContent += " / " + challengeText();
 window.requestAnimationFrame(frame);
 </script>
 </body>

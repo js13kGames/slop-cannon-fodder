@@ -117,6 +117,11 @@ test("minifier rejects undeclared identifiers", function () {
   assert.throws(function () { b.minifyJs("var a = notDeclaredAnywhere + 1; return a;"); }, /undeclared/);
 });
 
+test("external CSS URLs are rejected without mistaking canvas data export for a URL", function () {
+  assert.ok(b.externalRefs('a{background:url("evil.png")}').includes("external css url()"));
+  assert.deepEqual(b.externalRefs('canvas.toDataURL("image/png")'),[]);
+});
+
 test("build output is self-contained, valid and under budget", function () {
   const res = b.build({ quiet: true });
   const html = fs.readFileSync(b.OUT, "utf8");

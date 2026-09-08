@@ -9,7 +9,7 @@ Created for [js13kGames](https://js13kgames.com/) competition.
 
 <p align="center">
   <a href="dist/slop-cannon-fodder.min.html">
-    <img src="assets/preview.png" alt="Slop Cannon Fodder cover art" width="540">
+    <img src="assets/gameplay.gif" alt="Slop Cannon Fodder cover art" width="540">
   </a>
 </p>
 
@@ -18,8 +18,6 @@ Survive production slop as an on-call unicorn, blasting through waves of bugs wi
 ### [🌈 Play now →](dist/slop-cannon-fodder.min.html)
 
 Download the linked HTML file and open it in a browser, or run `npm run play` from a local checkout.
-
-![Slop Cannon Fodder — animated gameplay preview](assets/gameplay.gif)
 
 **Controls:** <kbd>WASD</kbd> / arrow keys move · mouse aims / hold left click fires · <kbd>Space</kbd> / right click throws a hotfix grenade · <kbd>M</kbd> mutes
 

@@ -19,8 +19,6 @@ Survive production slop as an on-call unicorn, blasting through waves of bugs wi
 
 Download the linked HTML file and open it in a browser, or run `npm run play` from a local checkout.
 
-![Slop Cannon Fodder — animated gameplay preview](assets/gameplay.gif)
-
 **Controls:** <kbd>WASD</kbd> / arrow keys move · mouse aims / hold left click fires · <kbd>Space</kbd> / right click throws a hotfix grenade · <kbd>M</kbd> mutes
 
 | Input | Action |

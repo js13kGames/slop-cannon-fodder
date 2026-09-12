@@ -1,16 +1,16 @@
 Slop Cannon Fodder - size report
-generated 2026-09-07T16:04:54.241Z
+generated 2026-09-12T16:41:07.006Z
 
-readable source   src/index.html                 53068 bytes
-production build  dist/slop-cannon-fodder.min.html 32904 bytes  (minified raw)
-gzip -9           dist/slop-cannon-fodder.min.html 13306 bytes  (deployable size)
-brotli            dist/slop-cannon-fodder.min.html 11775 bytes  (informational)
+readable source   src/index.html                 52866 bytes
+production build  dist/slop-cannon-fodder.min.html 32724 bytes  (minified raw)
+gzip -9           dist/slop-cannon-fodder.min.html 13227 bytes  (deployable size)
+brotli            dist/slop-cannon-fodder.min.html 11754 bytes  (informational)
 
 budget            13 KB = 13 * 1024               13312 bytes
-remaining         budget - gzip                   6 bytes
-used                                              99.95%
+remaining         budget - gzip                   85 bytes
+used                                              99.36%
 
 minifier          286 identifiers renamed, 14308 js tokens
-compression ratio 62.0% of source, gzip 40.4% of minified
+compression ratio 61.9% of source, gzip 40.4% of minified
 self-contained    yes (no network requests, no external assets)
 status            PASS - under budget

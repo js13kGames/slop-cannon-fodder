@@ -9,7 +9,7 @@ Created for [js13kGames](https://js13kgames.com/) competition.
 
 <p align="center">
   <a href="dist/slop-cannon-fodder.min.html">
-    <img src="assets/preview.png" alt="Slop Cannon Fodder cover art" width="540">
+    <img src="assets/gameplay.gif" alt="Slop Cannon Fodder cover art" width="540">
   </a>
 </p>
 
@@ -21,7 +21,7 @@ Download the linked HTML file and open it in a browser, or run `npm run play` fr
 
 ![Slop Cannon Fodder — animated gameplay preview](assets/gameplay.gif)
 
-**Controls:** <kbd>WASD</kbd> / <kbd>arrow keys</kbd> move · mouse aims / hold left click fires · <kbd>Space</kbd> / right click throws a hotfix grenade · <kbd>M</kbd> mutes
+**Controls:** <kbd>WASD</kbd> / arrow keys move · mouse aims / hold left click fires · <kbd>Space</kbd> / right click throws a hotfix grenade · <kbd>M</kbd> mutes
 
 | Input | Action |
 | --- | --- |

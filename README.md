@@ -21,14 +21,14 @@ Download the linked HTML file and open it in a browser, or run `npm run play` fr
 
 ![Slop Cannon Fodder — animated gameplay preview](assets/gameplay.gif)
 
-**Controls:** <kbd>WASD</kbd> / arrow keys move · mouse aims / hold left click fires · <kbd>Space</kbd> / right click throws a hotfix grenade · <kbd>M</kbd> mutes
+**Controls:** <kbd>WASD</kbd> / <kbd>arrow keys</kbd> move · mouse aims / hold left click fires · <kbd>Space</kbd> / right click throws a hotfix grenade · <kbd>M</kbd> mutes
 
 | Input | Action |
 | --- | --- |
-| P / Esc | Pause |
-| Enter after defeat | Retry the same seed |
-| N | Skip between waves |
-| 1 / 2 / 3 | Choose an upgrade |
+| <kbd>P</kbd> / <kbd>Esc</kbd> | Pause |
+| <kbd>Enter</kbd> after defeat | Retry the same seed |
+| <kbd>N</kbd> | Skip between waves |
+| <kbd>1</kbd> / <kbd>2</kbd> / <kbd>3</kbd> | Choose an upgrade |
 
 On touchscreens, drag on the left to move and hold on the right to aim and fire.
 Use the Hotfix and Pause buttons.
